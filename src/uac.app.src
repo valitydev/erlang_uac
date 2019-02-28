@@ -1,0 +1,23 @@
+{application, uac, [
+    {description, "Universal authorizer"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {uac, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        public_key,
+        genlib,
+        jose,
+        rfc3339,
+        base64url,
+        jsx
+    ]},
+    {env, []},
+    {modules, []},
+    {maintainers, [
+        ""
+    ]},
+    {licenses, []},
+    {links, []}
+]}.
