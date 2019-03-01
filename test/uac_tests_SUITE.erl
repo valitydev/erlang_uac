@@ -178,7 +178,7 @@ force_expiration_fail_test(_) ->
 bad_signee_test(_) ->
     ACL = ?test_service_acl(write),
     {error, nonexistent_key} =
-        uac_authorizer_jwt:issue(unique_id(), unlimited, {{<<"TEST">>, uac_acl:from_list(ACL)}, #{}}, random).
+        uac_authorizer_jwt:issue(unique_id(), unlimited, {<<"TEST">>, uac_acl:from_list(ACL)}, #{}, random).
 
 %%
 
@@ -202,7 +202,7 @@ different_issuers_test(_) ->
 issue_token(ACL, LifeTime) ->
     PartyID = <<"TEST">>,
     Claims = #{<<"TEST">> => <<"TEST">>},
-    uac_authorizer_jwt:issue(unique_id(), LifeTime, {{PartyID, uac_acl:from_list(ACL)}, Claims}, test).
+    uac_authorizer_jwt:issue(unique_id(), LifeTime, {PartyID, uac_acl:from_list(ACL)}, Claims, test).
 
 issue_dummy_token(ACL, Config) ->
     Claims = #{

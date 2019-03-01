@@ -8,7 +8,7 @@
 % Extend interface to support proper keystore manipulation
 
 -export([configure/1]).
--export([issue/4]).
+-export([issue/5]).
 -export([verify/2]).
 
 %%
@@ -152,16 +152,16 @@ construct_key(KID, JWK) ->
 
 %%
 
--spec issue(id(), expiration(), t(), keyname()) ->
+-spec issue(id(), expiration(), subject(), claims(), keyname()) ->
     {ok, token()} |
     {error, nonexistent_key} |
     {error, {invalid_signee, Reason :: atom()}}.
 
-issue(JTI, Expiration, Auth, Signee) ->
+issue(JTI, Expiration, Subject, Claims, Signee) ->
     case try_get_key_for_sign(Signee) of
         {ok, Key} ->
-            Claims = construct_final_claims(Auth, Expiration, JTI),
-            sign(Key, Claims);
+            FinalClaims = construct_final_claims(Subject, Claims, Expiration, JTI),
+            sign(Key, FinalClaims);
         {error, Error} ->
             {error, Error}
     end.
@@ -176,11 +176,11 @@ try_get_key_for_sign(Keyname) ->
             {error, nonexistent_key}
     end.
 
-construct_final_claims({{Subject, ACL}, Claims}, Expiration, JTI) ->
+construct_final_claims({SubjectID, ACL}, Claims, Expiration, JTI) ->
     maps:merge(
         Claims#{
             <<"jti">> => JTI,
-            <<"sub">> => Subject,
+            <<"sub">> => SubjectID,
             <<"exp">> => get_expires_at(Expiration)
         },
         encode_roles(uac_acl:encode(ACL))
