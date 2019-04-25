@@ -34,7 +34,9 @@
     check_expired_as_of => genlib_time:unow()
 }).
 
--define(test_service_acl(Access), [{[test_resource], Access}]).
+-define(test_service_acl(Access),
+    [{[test_resource], Access}]
+).
 
 -spec all() ->
     [test_case_name()].
@@ -144,7 +146,10 @@ successful_auth_test(_) ->
 -spec invalid_permissions_test(config()) ->
     _.
 invalid_permissions_test(_) ->
-    {ok, Token} = issue_token(?test_service_acl(read), unlimited),
+    {ok, Token} = issue_token(
+        [{[test_resource], read}, {{unknown, <<"other_test">>}, write}],
+        unlimited
+    ),
     {ok, AccessContext} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, #{}),
     {error, _} = uac:authorize_operation(?test_service_acl(write), AccessContext).
 

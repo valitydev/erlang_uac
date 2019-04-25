@@ -13,6 +13,7 @@
 
 -export([
     illegal_input_test/1,
+    unrecognized_resource_test/1,
     empty_test/1,
     stable_encoding_test/1,
     remove_scopes_test/1,
@@ -21,6 +22,7 @@
 ]).
 
 -spec illegal_input_test(config())   -> _.
+-spec unrecognized_resource_test(config())   -> _.
 -spec empty_test(config())           -> _.
 -spec stable_encoding_test(config()) -> _.
 -spec remove_scopes_test(config())   -> _.
@@ -36,6 +38,7 @@
 all() ->
     [
         illegal_input_test,
+        unrecognized_resource_test,
         empty_test,
         stable_encoding_test,
         remove_scopes_test,
@@ -93,8 +96,18 @@ end_per_testcase(_Name, Config) ->
 
 illegal_input_test(_C) ->
     ?assertError({badarg, {scope     , _}}, from_list([{[], read}])),
-    ?assertError({badarg, {permission, _}}, from_list([{[invoices], wread}])),
-    ?assertError({badarg, {resource  , _}}, from_list([{[payments], read}])).
+    ?assertError({badarg, {permission, _}}, from_list([{[invoices], wread}])).
+
+unrecognized_resource_test(_C) ->
+    ACL1 = from_list([
+        {{unknown, <<"blargh">>}, read}
+    ]),
+    Enc1 = [
+        <<"blargh:read">>
+    ],
+    Enc1 = encode(ACL1),
+    ACL1 = decode(Enc1),
+    ACL1 = decode(encode(ACL1)).
 
 empty_test(_C) ->
     [] = encode(from_list([])),

@@ -28,7 +28,8 @@
     check_expired_as_of => genlib_time:ts()
 }.
 
--type api_key()      :: binary().
+-type api_key() :: binary().
+-type key_type() :: bearer.
 
 -export_type([context/0]).
 -export_type([claims/0]).
@@ -40,16 +41,15 @@
 
 -spec configure(configuration()) ->
     ok.
+
 configure(Config) ->
     AuthorizerConfig = maps:get(jwt, Config),
     AccessConfig = maps:get(access, Config),
     ok = uac_authorizer_jwt:configure(AuthorizerConfig),
     ok = uac_conf:configure(AccessConfig).
 
--spec authorize_api_key(
-    ApiKey      :: api_key(),
-    VerificationOpts :: verification_opts()
-) -> {ok, Context :: context()} | {error, Reason :: atom()}.
+-spec authorize_api_key(api_key(), verification_opts()) ->
+    {ok, context()} | {error, Reason :: atom()}.
 
 authorize_api_key(ApiKey, VerificationOpts) ->
     case parse_api_key(ApiKey) of
@@ -60,32 +60,25 @@ authorize_api_key(ApiKey, VerificationOpts) ->
     end.
 
 -spec parse_api_key(ApiKey :: api_key()) ->
-    {ok, {bearer, Credentials :: binary()}} | {error, Reason :: atom()}.
+    {ok, {bearer, uac_authorizer_jwt:token()}} | {error, Reason :: atom()}.
 
 parse_api_key(ApiKey) ->
     case ApiKey of
-        <<"Bearer ", Credentials/binary>> ->
-            {ok, {bearer, Credentials}};
+        <<"Bearer ", Token/binary>> ->
+            {ok, {bearer, Token}};
         _ ->
             {error, unsupported_auth_scheme}
     end.
 
--spec authorize_api_key(
-    Type :: atom(),
-    Credentials :: binary(),
-    VerificationOpts :: verification_opts()
-) ->
-    {ok, Context :: context()} | {error, Reason :: atom()}.
+-spec authorize_api_key(key_type(), uac_authorizer_jwt:token(), verification_opts()) ->
+    {ok, context()} | {error, Reason :: atom()}.
 
 authorize_api_key(bearer, Token, VerificationOpts) ->
     uac_authorizer_jwt:verify(Token, VerificationOpts).
 
 %%
 
--spec authorize_operation(
-    AccessScope :: uac_conf:operation_access_scopes(),
-    Auth :: uac_authorizer_jwt:t()
-) ->
+-spec authorize_operation(uac_conf:operation_access_scopes(), uac_authorizer_jwt:t()) ->
     ok | {error, unauthorized}.
 
 authorize_operation(AccessScope, {_, {_SubjectID, ACL}, _}) ->

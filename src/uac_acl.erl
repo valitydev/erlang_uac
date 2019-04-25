@@ -5,13 +5,16 @@
 -opaque t()           :: [{{priority(), scope()}, [permission()]}].
 
 -type priority()      :: integer().
--type scope()         :: [resource() | {resource(), resource_id()}, ...].
+-type unknown_scope() :: {unknown, binary()}.
+-type known_scope()   :: [resource() | {resource(), resource_id()}, ...].
+-type scope()         :: known_scope() | unknown_scope().
 -type resource()      :: atom().
 -type resource_id()   :: binary().
 -type permission()    :: read | write.
 
 -export_type([t/0]).
 -export_type([scope/0]).
+-export_type([known_scope/0]).
 -export_type([resource/0]).
 -export_type([permission/0]).
 
@@ -49,6 +52,8 @@ from_list(L) ->
 -spec insert_scope(scope(), permission(), t()) ->
     t().
 
+insert_scope({unknown, _} = Scope, Permission, ACL) ->
+    insert({{0, Scope}, [Permission]}, ACL);
 insert_scope(Scope, Permission, ACL) ->
     Priority = compute_priority(Scope, Permission),
     insert({{Priority, Scope}, [Permission]}, ACL).
@@ -108,9 +113,8 @@ compute_permission_priority(V) ->
 
 %%
 
--spec match(scope(), t()) ->
+-spec match(known_scope(), t()) ->
     [permission()].
-
 match(Scope, ACL) when length(Scope) > 0 ->
     match_rules(Scope, ACL);
 match(Scope, _) ->
@@ -163,7 +167,12 @@ decode_entry(V, ACL) ->
 
 decode_scope(V) ->
     Hierarchy = get_resource_hierarchy(),
-    decode_scope_frags(binary:split(V, <<".">>, [global]), Hierarchy).
+    try
+        decode_scope_frags(binary:split(V, <<".">>, [global]), Hierarchy)
+    catch
+        error:{badarg, _} ->
+            {unknown, V}
+    end.
 
 decode_scope_frags([V1, V2 | Vs], H) ->
     {Resource, H1} = decode_scope_frag_resource(V1, V2, H),
@@ -206,6 +215,8 @@ encode_entry({{_Priority, Scope}, Permissions}) ->
     [begin P = encode_permission(Permission), <<S/binary, ":", P/binary>> end
         || Permission <- Permissions].
 
+encode_scope({unknown, V}) when is_binary(V) ->
+    V;
 encode_scope(Scope) ->
     Hierarchy = get_resource_hierarchy(),
     genlib_string:join($., encode_scope_frags(Scope, Hierarchy)).
@@ -220,7 +231,7 @@ encode_scope_frags([Resource | Rest], H) ->
 encode_scope_frags([], _) ->
     [].
 
-encode_resource(V) ->
+encode_resource(V) when is_atom(V) ->
     atom_to_binary(V, utf8).
 
 encode_permission(read) ->

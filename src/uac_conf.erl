@@ -11,7 +11,7 @@
 -export([get_service_name/0]).
 -export([get_resource_hierarchy/0]).
 
--type operation_access_scopes() :: [{uac_acl:scope(), uac_acl:permission()}].
+-type operation_access_scopes() :: [{uac_acl:known_scope(), uac_acl:permission()}].
 -type service_name() :: binary().
 -type resource_hierarchy() :: #{uac_acl:resource() => resource_hierarchy() | #{}}.
 
