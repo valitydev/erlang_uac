@@ -211,7 +211,7 @@ sign(#{kid := KID, jwk := JWK, signer := #{} = JWS}, Claims) ->
             {malformed_acl, term()}
         } |
         {nonexistent_key, kid()} |
-        invalid_operation |
+        {invalid_operation, term()} |
         invalid_signature
     }.
 
@@ -239,7 +239,7 @@ verify(Token, VerificationOpts) ->
 verify(KID, Alg, ExpandedToken, VerificationOpts) ->
     case get_key_by_kid(KID) of
         #{jwk := JWK, verifier := Algs} ->
-            _ = lists:member(Alg, Algs) orelse throw(invalid_operation),
+            _ = lists:member(Alg, Algs) orelse throw({invalid_operation, Alg}),
             verify(JWK, ExpandedToken, VerificationOpts);
         undefined ->
             {error, {nonexistent_key, KID}}
