@@ -8,15 +8,15 @@
 %% API
 
 -export([configure/1]).
--export([get_service_name/0]).
+-export([get_domain_name/0]).
 -export([get_resource_hierarchy/0]).
 
 -type operation_access_scopes() :: [{uac_acl:known_scope(), uac_acl:permission()}].
--type service_name() :: binary().
+-type domain_name() :: uac_authorizer_jwt:domain_name().
 -type resource_hierarchy() :: #{uac_acl:resource() => resource_hierarchy() | #{}}.
 
 -type options() :: #{
-    service_name := service_name(),
+    domain_name := domain_name(),
     resource_hierarchy := resource_hierarchy()
 }.
 -export_type([options/0]).
@@ -45,10 +45,10 @@ init([]) ->
 %% API
 %%
 
--spec get_service_name() ->
-    service_name().
-get_service_name() ->
-    lookup_value(service_name).
+-spec get_domain_name() ->
+    domain_name().
+get_domain_name() ->
+    lookup_value(domain_name).
 
 -spec get_resource_hierarchy() ->
     resource_hierarchy().

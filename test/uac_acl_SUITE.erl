@@ -57,7 +57,7 @@ init_per_suite(Config) ->
             }
         },
         access => #{
-            service_name => <<"test">>,
+            domain_name => <<"test">>,
             resource_hierarchy => #{
                 party               => #{invoice_templates => #{invoice_template_invoices => #{}}},
                 customers           => #{bindings => #{}},

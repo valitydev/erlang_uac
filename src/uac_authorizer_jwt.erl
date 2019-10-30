@@ -9,6 +9,7 @@
 
 -export([configure/1]).
 -export([issue/5]).
+-export([issue/6]).
 -export([verify/2]).
 
 %%
@@ -16,14 +17,16 @@
 -include_lib("jose/include/jose_jwk.hrl").
 -include_lib("jose/include/jose_jwt.hrl").
 
--type keyname()    :: term().
--type kid()        :: binary().
--type key()        :: #jose_jwk{}.
--type token()      :: binary().
--type claims()     :: #{binary() => term()}.
--type subject()    :: {subject_id(), uac_acl:t()}.
--type subject_id() :: binary().
--type t()          :: {id(), subject(), claims()}.
+-type keyname()      :: term().
+-type kid()          :: binary().
+-type key()          :: #jose_jwk{}.
+-type token()        :: binary().
+-type claims()       :: #{binary() => term()}.
+-type subject()      :: {subject_id(), uac_acl:t()}.
+-type subject_id()   :: binary().
+-type t()            :: {id(), subject(), claims()}.
+-type domain_name()  :: binary().
+-type domains()      :: #{domain_name() => uac_acl:t()}.
 -type expiration()        ::
     {lifetime, Seconds :: pos_integer()} |
     {deadline, UnixTs :: pos_integer()}  |
@@ -35,7 +38,7 @@
 -export_type([claims/0]).
 -export_type([token/0]).
 -export_type([expiration/0]).
-
+-export_type([domain_name/0]).
 %%
 
 -type options() :: #{
@@ -157,10 +160,19 @@ construct_key(KID, JWK) ->
     {error, nonexistent_key} |
     {error, {invalid_signee, Reason :: atom()}}.
 
-issue(JTI, Expiration, Subject, Claims, Signee) ->
+issue(JTI, Expiration, {SubjectID, ACL}, Claims, Signee) ->
+    Domain = uac_conf:get_domain_name(),
+    issue(JTI, Expiration, SubjectID, #{Domain => ACL}, Claims, Signee).
+
+-spec issue(id(), expiration(), subject_id(), domains(), claims(), keyname()) ->
+    {ok, token()} |
+    {error, nonexistent_key} |
+    {error, {invalid_signee, Reason :: atom()}}.
+
+issue(JTI, Expiration, SubjectID, DomainRoles, Claims, Signee) ->
     case try_get_key_for_sign(Signee) of
         {ok, Key} ->
-            FinalClaims = construct_final_claims(Subject, Claims, Expiration, JTI),
+            FinalClaims = construct_final_claims(SubjectID, DomainRoles, Claims, Expiration, JTI),
             sign(Key, FinalClaims);
         {error, Error} ->
             {error, Error}
@@ -176,14 +188,14 @@ try_get_key_for_sign(Keyname) ->
             {error, nonexistent_key}
     end.
 
-construct_final_claims({SubjectID, ACL}, Claims, Expiration, JTI) ->
+construct_final_claims(SubjectID, DomainRoles, Claims, Expiration, JTI) ->
     maps:merge(
         Claims#{
             <<"jti">> => JTI,
             <<"sub">> => SubjectID,
             <<"exp">> => get_expires_at(Expiration)
         },
-        encode_roles(uac_acl:encode(ACL))
+        encode_roles(DomainRoles)
     ).
 
 get_expires_at({lifetime, Lt}) ->
@@ -323,20 +335,14 @@ get_check_expiry(Opts) ->
 
 %%
 
-encode_roles(Roles) ->
-    IssuerResource = uac_conf:get_service_name(),
-    #{
-        <<"resource_access">> => #{
-            IssuerResource => #{
-                <<"roles">> => Roles
-            }
-        }
-    }.
+encode_roles(DomainRoles) ->
+    F = fun(_, Roles) -> #{<<"roles">> => uac_acl:encode(Roles)} end,
+    #{<<"resource_access">> => maps:map(F, DomainRoles)}.
 
 decode_roles(Claims = #{
     <<"resource_access">> := Resources
 }) when is_map(Resources) andalso map_size(Resources) > 0 ->
-    Accepted = uac_conf:get_service_name(),
+    Accepted = uac_conf:get_domain_name(),
     Roles = try_get_roles(Resources, Accepted),
     {Roles, maps:remove(<<"resource_access">>, Claims)};
 decode_roles(_) ->
