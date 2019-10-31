@@ -39,6 +39,7 @@
 -export_type([token/0]).
 -export_type([expiration/0]).
 -export_type([domain_name/0]).
+-export_type([domains/0]).
 %%
 
 -type options() :: #{
