@@ -25,7 +25,8 @@
 }.
 
 -type verification_opts() :: #{
-    check_expired_as_of => genlib_time:ts()
+    check_expired_as_of => genlib_time:ts(),
+    should_authorize_operations => boolean()
 }.
 
 -type api_key() :: binary().
