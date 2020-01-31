@@ -20,7 +20,7 @@
     different_issuers_test/1,
     unknown_resources_ok_test/1,
     unknown_resources_fail_encode_test/1,
-    cant_authorize_without_resource_access/1
+    undefined_acl_in_token_without_resource_access/1
 ]).
 
 -type test_case_name()  :: atom().
@@ -51,7 +51,7 @@ all() ->
         unknown_resources_ok_test,
         unknown_resources_fail_encode_test,
         different_issuers_test,
-        cant_authorize_without_resource_access
+        undefined_acl_in_token_without_resource_access
     ].
 
 -spec init_per_suite(config()) ->
@@ -192,11 +192,11 @@ unknown_resources_ok_test(_) ->
     {ok, AccessContext} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, #{}),
     ok = uac:authorize_operation(?TEST_SERVICE_ACL(write), AccessContext).
 
--spec cant_authorize_without_resource_access(config()) ->
+-spec undefined_acl_in_token_without_resource_access(config()) ->
     _.
-cant_authorize_without_resource_access(_) ->
+undefined_acl_in_token_without_resource_access(_) ->
     {ok, Token} = issue_token(#{}, unlimited),
-    {error, {invalid_token,{missing,acl}}} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, #{}).
+    {ok, {_, {_, undefined}, _}} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, #{}).
 
 -spec unknown_resources_fail_encode_test(config()) ->
     _.

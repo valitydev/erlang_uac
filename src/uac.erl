@@ -25,8 +25,7 @@
 }.
 
 -type verification_opts() :: #{
-    check_expired_as_of => genlib_time:ts(),
-    should_authorize_operations => boolean()
+    check_expired_as_of => genlib_time:ts()
 }.
 
 -type api_key() :: binary().
@@ -82,6 +81,8 @@ authorize_api_key(bearer, Token, VerificationOpts) ->
 -spec authorize_operation(uac_conf:operation_access_scopes(), uac_authorizer_jwt:t()) ->
     ok | {error, unauthorized}.
 
+authorize_operation(_, {_, {_, undefined}, _}) ->
+    {error, unauthorized};
 authorize_operation(AccessScope, {_, {_SubjectID, ACL}, _}) ->
     case lists:all(
         fun ({Scope, Permission}) ->

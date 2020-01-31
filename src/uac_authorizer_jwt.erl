@@ -235,9 +235,8 @@ sign(#{kid := KID, jwk := JWK, signer := #{} = JWS}, Claims) ->
         invalid_signature
     }.
 
-verify(Token, VerificationOpts0) ->
+verify(Token, VerificationOpts) ->
     try
-        VerificationOpts = maps:merge(#{should_authorize_operations => true}, VerificationOpts0),
         {_, ExpandedToken} = jose_jws:expand(Token),
         #{<<"protected">> := ProtectedHeader} = ExpandedToken,
         Header = base64url_to_map(ProtectedHeader),
@@ -270,7 +269,7 @@ verify(JWK, ExpandedToken, VerificationOpts) ->
     case jose_jwt:verify(JWK, ExpandedToken) of
         {true, #jose_jwt{fields = Claims}, _JWS} ->
             {KeyMeta, Claims1} = validate_claims(Claims, VerificationOpts),
-            get_result(KeyMeta, decode_roles(Claims1, VerificationOpts));
+            get_result(KeyMeta, decode_roles(Claims1));
         {false, _JWT, _JWS} ->
             {error, invalid_signature}
     end.
@@ -287,12 +286,17 @@ validate_claims(Claims, [], _, Acc) ->
 get_result(KeyMeta, {Roles, Claims}) ->
     #{token_id := TokenID, subject_id := SubjectID} = KeyMeta,
     try
-        Subject = {SubjectID, uac_acl:decode(Roles)},
+        Subject = {SubjectID, try_decode_roles(Roles)},
         {ok, {TokenID, Subject, Claims}}
     catch
         error:{badarg, _} = Reason ->
             throw({invalid_token, {malformed_acl, Reason}})
     end.
+
+try_decode_roles(undefined) ->
+    undefined;
+try_decode_roles(Roles0) ->
+    uac_acl:decode(Roles0).
 
 get_kid(#{<<"kid">> := KID}) when is_binary(KID) ->
     KID;
@@ -370,18 +374,18 @@ encode_roles(DomainRoles) when is_map(DomainRoles) andalso map_size(DomainRoles)
 encode_roles(_) ->
     #{}.
 
-decode_roles(Claims, #{should_authorize_operations := true}) ->
-    case maps:get(<<"resource_access">>, Claims, undefined) of
+decode_roles(Claims) ->
+    Roles = case maps:get(<<"resource_access">>, Claims, undefined) of
         Resources when is_map(Resources) andalso map_size(Resources) > 0 ->
             Accepted = uac_conf:get_domain_name(),
-            Roles = try_get_roles(Resources, Accepted),
-            {Roles, maps:remove(<<"resource_access">>, Claims)};
+           try_get_roles(Resources, Accepted);
+        undefined ->
+            undefined;
         _ ->
-            throw({invalid_token, {missing, acl}})
-    end;
-decode_roles(Claims, _) ->
-    % don't even bother looking for roles
-    {[], Claims}.
+            % Resources is not map or an empty one
+            throw({invalid_token, {invalid, acl}})
+    end,
+    {Roles, maps:remove(<<"resource_access">>, Claims)}.
 
 try_get_roles(Resources, Accepted) ->
     case maps:get(Accepted, Resources, undefined) of
