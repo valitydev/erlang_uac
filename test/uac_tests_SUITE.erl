@@ -203,6 +203,7 @@ undefined_acl_in_token_without_resource_access(_) ->
 unknown_resources_fail_encode_test(_) ->
     ACL = [{[different_resource], read}, {[test_resource], write}, {[even_more_different_resource], read}],
     ?assertError({badarg, {resource, _}}, issue_token(ACL, unlimited)).
+
 %%
 
 issue_token(DomainRoles, LifeTime) when is_map(DomainRoles) ->

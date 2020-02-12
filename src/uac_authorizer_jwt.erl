@@ -171,7 +171,7 @@ construct_key(KID, JWK) ->
 issue(JTI, Expiration, {SubjectID, ACL}, Claims, Signee) ->
     Domain = uac_conf:get_domain_name(),
     DomainRoles = case ACL of
-        undefined -> undefinde;
+        undefined -> #{};
         ACL -> #{Domain => ACL}
     end,
     issue(JTI, Expiration, SubjectID, DomainRoles, Claims, Signee).
