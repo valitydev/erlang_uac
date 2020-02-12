@@ -29,7 +29,7 @@
 -type key()          :: #jose_jwk{}.
 -type token()        :: binary().
 -type claims()       :: #{binary() => term()}.
--type subject()      :: {subject_id(), uac_acl:t()}.
+-type subject()      :: {subject_id(), uac_acl:t() | undefined}.
 -type subject_id()   :: binary().
 -type t()            :: {id(), subject(), claims()}.
 -type domain_name()  :: binary().
