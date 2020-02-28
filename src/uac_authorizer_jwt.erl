@@ -8,8 +8,7 @@
 % Extend interface to support proper keystore manipulation
 
 -export([configure/1]).
--export([issue/5]).
--export([issue/6]).
+-export([issue/4]).
 -export([verify/2]).
 
 %%
@@ -18,6 +17,7 @@
 -export([get_claims/1]).
 -export([get_claim/2]).
 -export([get_claim/3]).
+-export([create_claims/3]).
 
 %%
 
@@ -28,10 +28,9 @@
 -type kid()          :: binary().
 -type key()          :: #jose_jwk{}.
 -type token()        :: binary().
--type claims()       :: #{binary() => term()}.
--type subject()      :: {subject_id(), uac_acl:t()}.
+-type claims()       :: #{binary() => domains() | expiration() | term()}.
 -type subject_id()   :: binary().
--type t()            :: {id(), subject(), claims()}.
+-type t()            :: {id(), subject_id(), claims()}.
 -type domain_name()  :: binary().
 -type domains()      :: #{domain_name() => uac_acl:t()}.
 -type expiration()        ::
@@ -41,7 +40,6 @@
 -type id() :: binary().
 
 -export_type([t/0]).
--export_type([subject/0]).
 -export_type([claims/0]).
 -export_type([token/0]).
 -export_type([expiration/0]).
@@ -163,24 +161,15 @@ construct_key(KID, JWK) ->
 
 %%
 
--spec issue(id(), expiration(), subject(), claims(), keyname()) ->
+-spec issue(id(), subject_id(), claims(), keyname()) ->
     {ok, token()} |
     {error, nonexistent_key} |
     {error, {invalid_signee, Reason :: atom()}}.
 
-issue(JTI, Expiration, {SubjectID, ACL}, Claims, Signee) ->
-    Domain = uac_conf:get_domain_name(),
-    issue(JTI, Expiration, SubjectID, #{Domain => ACL}, Claims, Signee).
-
--spec issue(id(), expiration(), subject_id(), domains(), claims(), keyname()) ->
-    {ok, token()} |
-    {error, nonexistent_key} |
-    {error, {invalid_signee, Reason :: atom()}}.
-
-issue(JTI, Expiration, SubjectID, DomainRoles, Claims, Signee) ->
+issue(JTI, SubjectID, Claims, Signee) ->
     case try_get_key_for_sign(Signee) of
         {ok, Key} ->
-            FinalClaims = construct_final_claims(SubjectID, DomainRoles, Claims, Expiration, JTI),
+            FinalClaims = construct_final_claims(SubjectID, Claims, JTI),
             sign(Key, FinalClaims);
         {error, Error} ->
             {error, Error}
@@ -196,15 +185,19 @@ try_get_key_for_sign(Keyname) ->
             {error, nonexistent_key}
     end.
 
-construct_final_claims(SubjectID, DomainRoles, Claims, Expiration, JTI) ->
-    maps:merge(
-        Claims#{
-            <<"jti">> => JTI,
-            <<"sub">> => SubjectID,
-            <<"exp">> => get_expires_at(Expiration)
-        },
-        encode_roles(DomainRoles)
-    ).
+construct_final_claims(SubjectID, Claims, JTI) ->
+    Token0 = #{<<"jti">> => JTI, <<"sub">> => SubjectID},
+    EncodedClaims = maps:map(fun encode_claim/2, Claims),
+    maps:merge(EncodedClaims, Token0).
+
+encode_claim(<<"exp">>, Expiration) ->
+    get_expires_at(Expiration);
+encode_claim(<<"resource_access">>, DomainRoles) ->
+    encode_roles(DomainRoles);
+encode_claim(_, Value) ->
+    Value.
+
+
 
 get_expires_at({lifetime, Lt}) ->
     genlib_time:unow() + Lt;
@@ -269,7 +262,7 @@ verify(JWK, ExpandedToken, VerificationOpts) ->
     case jose_jwt:verify(JWK, ExpandedToken) of
         {true, #jose_jwt{fields = Claims}, _JWS} ->
             {KeyMeta, Claims1} = validate_claims(Claims, VerificationOpts),
-            get_result(KeyMeta, decode_roles(Claims1));
+            get_result(KeyMeta, Claims1);
         {false, _JWT, _JWS} ->
             {error, invalid_signature}
     end.
@@ -283,20 +276,14 @@ validate_claims(Claims, [{Name, Claim, Validator} | Rest], VerificationOpts, Acc
 validate_claims(Claims, [], _, Acc) ->
     {Acc, Claims}.
 
-get_result(KeyMeta, {Roles, Claims}) ->
+get_result(KeyMeta, Claims) ->
     #{token_id := TokenID, subject_id := SubjectID} = KeyMeta,
     try
-        Subject = {SubjectID, try_decode_roles(Roles)},
-        {ok, {TokenID, Subject, Claims}}
+        {ok, {TokenID, SubjectID, decode_roles(Claims)}}
     catch
         error:{badarg, _} = Reason ->
             throw({invalid_token, {malformed_acl, Reason}})
     end.
-
-try_decode_roles(undefined) ->
-    undefined;
-try_decode_roles(Roles0) ->
-    uac_acl:decode(Roles0).
 
 get_kid(#{<<"kid">> := KID}) when is_binary(KID) ->
     KID;
@@ -333,8 +320,11 @@ check_expiration(_, Exp, Opts) when is_integer(Exp) ->
         _ ->
             throw({invalid_token, expired})
     end;
-check_expiration(C, undefined, _) ->
-    throw({invalid_token, {missing, C}});
+check_expiration(C, undefined, Opts) ->
+    case get_check_expiry(Opts) of
+        {true, _} -> throw({invalid_token, {missing, C}});
+        false     -> undefined
+    end;
 check_expiration(C, V, _) ->
     throw({invalid_token, {badarg, {C, V}}}).
 
@@ -348,7 +338,7 @@ get_check_expiry(Opts) ->
 
 -spec get_subject_id(t()) -> binary().
 
-get_subject_id({_Id, {SubjectID, _ACL}, _Claims}) ->
+get_subject_id({_Id, SubjectID, _Claims}) ->
     SubjectID.
 
 -spec get_claims(t()) -> claims().
@@ -366,33 +356,31 @@ get_claim(ClaimName, {_Id, _Subject, Claims}) ->
 get_claim(ClaimName, {_Id, _Subject, Claims}, Default) ->
     maps:get(ClaimName, Claims, Default).
 
+-spec create_claims(claims(), expiration(), domains()) -> claims().
+
+create_claims(Claims, Expiration, DomainRoles) ->
+    Claims#{
+        <<"exp">> => Expiration,
+        <<"resource_access">> => DomainRoles
+    }.
+
 %%
 
 encode_roles(DomainRoles) when is_map(DomainRoles) andalso map_size(DomainRoles) > 0 ->
     F = fun(_, Roles) -> #{<<"roles">> => uac_acl:encode(Roles)} end,
-    #{<<"resource_access">> => maps:map(F, DomainRoles)};
+    maps:map(F, DomainRoles);
 encode_roles(_) ->
     #{}.
 
 decode_roles(Claims) ->
-    Roles = case maps:get(<<"resource_access">>, Claims, undefined) of
-        Resources when is_map(Resources) andalso map_size(Resources) > 0 ->
-            Accepted = uac_conf:get_domain_name(),
-           try_get_roles(Resources, Accepted);
+    case genlib_map:get(<<"resource_access">>, Claims) of
         undefined ->
-            undefined;
+            Claims;
+        ResourceAcceess when is_map(ResourceAcceess) ->
+            DomainRoles = maps:map(fun(_, #{<<"roles">> := Roles}) -> uac_acl:decode(Roles) end, ResourceAcceess),
+            Claims#{<<"resource_access">> => DomainRoles};
         _ ->
-            % Resources is not map or an empty one
             throw({invalid_token, {invalid, acl}})
-    end,
-    {Roles, maps:remove(<<"resource_access">>, Claims)}.
-
-try_get_roles(Resources, Accepted) ->
-    case maps:get(Accepted, Resources, undefined) of
-        #{<<"roles">> := Roles} ->
-            Roles;
-        undefined ->
-            []
     end.
 
 %%

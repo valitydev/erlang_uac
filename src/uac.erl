@@ -15,6 +15,7 @@
 -export([configure/1]).
 -export([authorize_api_key/2]).
 -export([authorize_operation/2]).
+-export([authorize_operation/3]).
 
 -type context() :: uac_authorizer_jwt:t().
 -type claims()  :: uac_authorizer_jwt:claims().
@@ -28,8 +29,9 @@
     check_expired_as_of => genlib_time:ts()
 }.
 
--type api_key() :: binary().
--type key_type() :: bearer.
+-type api_key()     :: binary().
+-type key_type()    :: bearer.
+-type domain_name() :: uac_authorizer_jwt:domain_name().
 
 -export_type([context/0]).
 -export_type([claims/0]).
@@ -78,12 +80,21 @@ authorize_api_key(bearer, Token, VerificationOpts) ->
 
 %%
 
--spec authorize_operation(uac_conf:operation_access_scopes(), uac_authorizer_jwt:t()) ->
+-spec authorize_operation(uac_conf:operation_access_scopes(), context()) ->
     ok | {error, unauthorized}.
 
-authorize_operation(_, {_, {_, undefined}, _}) ->
+authorize_operation(AccessScope, Context) ->
+    authorize_operation(AccessScope, Context, uac_conf:get_domain_name()).
+
+-spec authorize_operation(uac_conf:operation_access_scopes(), context(), domain_name()) ->
+    ok | {error, unauthorized}.
+authorize_operation(AccessScope, {_, _, Claims}, Domain) ->
+    ACL = get_acl(Claims, Domain),
+    authorize_operation_(AccessScope, ACL).
+
+authorize_operation_(_, undefined) ->
     {error, unauthorized};
-authorize_operation(AccessScope, {_, {_SubjectID, ACL}, _}) ->
+authorize_operation_(AccessScope, ACL) ->
     case lists:all(
         fun ({Scope, Permission}) ->
             lists:member(Permission, uac_acl:match(Scope, ACL))
@@ -94,6 +105,12 @@ authorize_operation(AccessScope, {_, {_SubjectID, ACL}, _}) ->
             ok;
         false ->
             {error, unauthorized}
+    end.
+
+get_acl(Claims, Domain) ->
+    case genlib_map:get(<<"resource_access">>, Claims) of
+        undefined -> undefined;
+        DomainRoles when is_map(DomainRoles) -> genlib_map:get(Domain, DomainRoles)
     end.
 
 %%
