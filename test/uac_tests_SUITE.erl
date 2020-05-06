@@ -20,7 +20,8 @@
     unknown_resources_ok_test/1,
     unknown_resources_fail_encode_test/1,
     cant_authorize_without_resource_access/1,
-    no_expiration_claim_allowed/1
+    no_expiration_claim_allowed/1,
+    configure_processed_domains_test/1
 ]).
 
 -type test_case_name()  :: atom().
@@ -51,8 +52,8 @@ all() ->
         unknown_resources_ok_test,
         unknown_resources_fail_encode_test,
         cant_authorize_without_resource_access,
-        no_expiration_claim_allowed
-
+        no_expiration_claim_allowed,
+        configure_processed_domains_test
     ].
 
 -spec init_per_suite(config()) ->
@@ -195,6 +196,21 @@ no_expiration_claim_allowed(_) ->
     PartyID = <<"TEST">>,
     {ok, Token} = uac_authorizer_jwt:issue(unique_id(), PartyID, #{}, test),
     {ok, _} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, #{}).
+
+-spec configure_processed_domains_test(config()) ->
+    _.
+
+configure_processed_domains_test(_) ->
+    ACL = ?TEST_SERVICE_ACL(read),
+    Domain1  = <<"api-1">>,
+    Domain2  = <<"api-2">>,
+    {ok, Token} = issue_token(#{
+        Domain1 => uac_acl:from_list(ACL),
+        Domain2 => uac_acl:from_list(ACL)
+    }, unlimited),
+    {ok, AccessContext} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, #{domains_to_decode => [Domain1]}),
+    ok = uac:authorize_operation([], AccessContext, Domain1),
+    {error, unauthorized} = uac:authorize_operation([], AccessContext, Domain2).
 
 %%
 

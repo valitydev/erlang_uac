@@ -262,7 +262,7 @@ verify(JWK, ExpandedToken, VerificationOpts) ->
     case jose_jwt:verify(JWK, ExpandedToken) of
         {true, #jose_jwt{fields = Claims}, _JWS} ->
             {KeyMeta, Claims1} = validate_claims(Claims, VerificationOpts),
-            get_result(KeyMeta, Claims1);
+            get_result(KeyMeta, Claims1, VerificationOpts);
         {false, _JWT, _JWS} ->
             {error, invalid_signature}
     end.
@@ -276,10 +276,10 @@ validate_claims(Claims, [{Name, Claim, Validator} | Rest], VerificationOpts, Acc
 validate_claims(Claims, [], _, Acc) ->
     {Acc, Claims}.
 
-get_result(KeyMeta, Claims) ->
+get_result(KeyMeta, Claims, VerificationOpts) ->
     #{token_id := TokenID, subject_id := SubjectID} = KeyMeta,
     try
-        {ok, {TokenID, SubjectID, decode_roles(Claims)}}
+        {ok, {TokenID, SubjectID, decode_roles(Claims, VerificationOpts)}}
     catch
         error:{badarg, _} = Reason ->
             throw({invalid_token, {malformed_acl, Reason}})
@@ -372,12 +372,18 @@ encode_roles(DomainRoles) when is_map(DomainRoles) andalso map_size(DomainRoles)
 encode_roles(_) ->
     #{}.
 
-decode_roles(Claims) ->
+decode_roles(Claims, VerificationOpts) ->
     case genlib_map:get(<<"resource_access">>, Claims) of
         undefined ->
             Claims;
         ResourceAcceess when is_map(ResourceAcceess) ->
-            DomainRoles = maps:map(fun(_, #{<<"roles">> := Roles}) -> uac_acl:decode(Roles) end, ResourceAcceess),
+            % @FIXME This is a temporary solution
+            % rework interface the way this line won't be needed
+            Domains = maps:get(domains_to_decode, VerificationOpts, maps:keys(ResourceAcceess)),
+            DomainRoles = maps:map(
+                fun(_, #{<<"roles">> := Roles}) -> uac_acl:decode(Roles) end,
+                maps:with(Domains, ResourceAcceess)
+            ),
             Claims#{<<"resource_access">> => DomainRoles};
         _ ->
             throw({invalid_token, {invalid, acl}})
