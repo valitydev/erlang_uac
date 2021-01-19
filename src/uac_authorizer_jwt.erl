@@ -24,19 +24,20 @@
 -include_lib("jose/include/jose_jwk.hrl").
 -include_lib("jose/include/jose_jwt.hrl").
 
--type keyname()      :: term().
--type kid()          :: binary().
--type key()          :: #jose_jwk{}.
--type token()        :: binary().
--type claims()       :: #{binary() => domains() | expiration() | term()}.
--type subject_id()   :: binary().
--type t()            :: {id(), subject_id(), claims()}.
--type domain_name()  :: binary().
--type domains()      :: #{domain_name() => uac_acl:t()}.
--type expiration()        ::
-    {lifetime, Seconds :: pos_integer()} |
-    {deadline, UnixTs :: pos_integer()}  |
-    unlimited.
+-type keyname() :: term().
+-type kid() :: binary().
+-type key() :: #jose_jwk{}.
+-type token() :: binary().
+-type claims() :: #{binary() => domains() | expiration() | term()}.
+-type subject_id() :: binary().
+-type t() :: {id(), subject_id(), claims()}.
+-type domain_name() :: binary().
+-type domains() :: #{domain_name() => uac_acl:t()}.
+-type expiration() ::
+    {lifetime, Seconds :: pos_integer()}
+    | {deadline, UnixTs :: pos_integer()}
+    | unlimited.
+
 -type id() :: binary().
 
 -export_type([t/0]).
@@ -45,6 +46,7 @@
 -export_type([expiration/0]).
 -export_type([domain_name/0]).
 -export_type([domains/0]).
+
 %%
 
 -type options() :: #{
@@ -62,27 +64,24 @@
 -type keysource() ::
     {pem_file, file:filename()}.
 
--spec get_child_spec() ->
-    [supervisor:child_spec()].
-
+-spec get_child_spec() -> [supervisor:child_spec()].
 get_child_spec() ->
-    [#{
-        id => ?MODULE,
-        start => {supervisor, start_link, [?MODULE, []]},
-        type => supervisor
-    }].
+    [
+        #{
+            id => ?MODULE,
+            start => {supervisor, start_link, [?MODULE, []]},
+            type => supervisor
+        }
+    ].
 
--spec init([]) ->
-    {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
-
+-spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
     ok = create_table(),
     {ok, {#{}, []}}.
 
 %%
 
--spec configure(options()) ->
-    ok.
+-spec configure(options()) -> ok.
 configure(Options) ->
     Keyset = parse_options(Options),
     _ = maps:map(fun ensure_store_key/2, Keyset),
@@ -92,7 +91,7 @@ parse_options(Options) ->
     Keyset = maps:get(keyset, Options, #{}),
     _ = is_map(Keyset) orelse exit({invalid_option, keyset, Keyset}),
     _ = genlib_map:foreach(
-        fun (K, V) ->
+        fun(K, V) ->
             is_keysource(V) orelse exit({invalid_option, K, V})
         end,
         Keyset
@@ -114,9 +113,7 @@ ensure_store_key(Keyname, Source) ->
 
 %%
 
--spec store_key(keyname(), {pem_file, file:filename()}) ->
-    ok | {error, file:posix() | {unknown_key, _}}.
-
+-spec store_key(keyname(), {pem_file, file:filename()}) -> ok | {error, file:posix() | {unknown_key, _}}.
 store_key(Keyname, {pem_file, Filename}) ->
     store_key(Keyname, {pem_file, Filename}, #{
         kid => fun derive_kid_from_public_key_pem_entry/1
@@ -126,15 +123,13 @@ derive_kid_from_public_key_pem_entry(JWK) ->
     JWKPublic = jose_jwk:to_public(JWK),
     {_Module, PublicKey} = JWKPublic#jose_jwk.kty,
     {_PemEntry, Data, _} = public_key:pem_entry_encode('SubjectPublicKeyInfo', PublicKey),
-    base64url:encode(crypto:hash(sha256, Data)).
+    jose_base64url:encode(crypto:hash(sha256, Data)).
 
 -type store_opts() :: #{
-    kid => fun ((key()) -> kid())
+    kid => fun((key()) -> kid())
 }.
 
--spec store_key(keyname(), {pem_file, file:filename()}, store_opts()) ->
-    ok | {error, file:posix() | {unknown_key, _}}.
-
+-spec store_key(keyname(), {pem_file, file:filename()}, store_opts()) -> ok | {error, file:posix() | {unknown_key, _}}.
 store_key(Keyname, {pem_file, Filename}, Opts) ->
     case jose_jwk:from_pem_file(Filename) of
         JWK = #jose_jwk{} ->
@@ -148,24 +143,33 @@ derive_kid(JWK, #{kid := DeriveFun}) when is_function(DeriveFun, 1) ->
     DeriveFun(JWK).
 
 construct_key(KID, JWK) ->
-    Signer = try jose_jwk:signer(JWK)   catch error:_ -> undefined end,
-    Verifier = try jose_jwk:verifier(JWK) catch error:_ -> undefined end,
+    Signer =
+        try
+            jose_jwk:signer(JWK)
+        catch
+            error:_ -> undefined
+        end,
+    Verifier =
+        try
+            jose_jwk:verifier(JWK)
+        catch
+            error:_ -> undefined
+        end,
     #{
-        jwk        => JWK,
-        kid        => KID,
-        signer     => Signer,
-        can_sign   => Signer /= undefined,
-        verifier   => Verifier,
+        jwk => JWK,
+        kid => KID,
+        signer => Signer,
+        can_sign => Signer /= undefined,
+        verifier => Verifier,
         can_verify => Verifier /= undefined
     }.
 
 %%
 
 -spec issue(id(), subject_id(), claims(), keyname()) ->
-    {ok, token()} |
-    {error, nonexistent_key} |
-    {error, {invalid_signee, Reason :: atom()}}.
-
+    {ok, token()}
+    | {error, nonexistent_key}
+    | {error, {invalid_signee, Reason :: atom()}}.
 issue(JTI, SubjectID, Claims, Signee) ->
     case try_get_key_for_sign(Signee) of
         {ok, Key} ->
@@ -197,8 +201,6 @@ encode_claim(<<"resource_access">>, DomainRoles) ->
 encode_claim(_, Value) ->
     Value.
 
-
-
 get_expires_at({lifetime, Lt}) ->
     genlib_time:unow() + Lt;
 get_expires_at({deadline, Dl}) ->
@@ -214,20 +216,17 @@ sign(#{kid := KID, jwk := JWK, signer := #{} = JWS}, Claims) ->
 %%
 
 -spec verify(token(), uac:verification_opts()) ->
-    {ok, t()} |
-    {error,
+    {ok, t()}
+    | {error,
         {invalid_token,
-            badarg |
-            {badarg, term()} |
-            {missing, atom()} |
-            expired |
-            {malformed_acl, term()}
-        } |
-        {nonexistent_key, kid()} |
-        {invalid_operation, term()} |
-        invalid_signature
-    }.
-
+            badarg
+            | {badarg, term()}
+            | {missing, atom()}
+            | expired
+            | {malformed_acl, term()}}
+        | {nonexistent_key, kid()}
+        | {invalid_operation, term()}
+        | invalid_signature}.
 verify(Token, VerificationOpts) ->
     try
         {_, ExpandedToken} = jose_jws:expand(Token),
@@ -299,9 +298,9 @@ get_alg(#{}) ->
 
 get_validators() ->
     [
-        {token_id   , <<"jti">> , fun check_presence/3},
-        {subject_id , <<"sub">> , fun check_presence/3},
-        {expires_at , <<"exp">> , fun check_expiration/3}
+        {token_id, <<"jti">>, fun check_presence/3},
+        {subject_id, <<"sub">>, fun check_presence/3},
+        {expires_at, <<"exp">>, fun check_expiration/3}
     ].
 
 check_presence(_, V, _) when is_binary(V) ->
@@ -323,7 +322,7 @@ check_expiration(_, Exp, Opts) when is_integer(Exp) ->
 check_expiration(C, undefined, Opts) ->
     case get_check_expiry(Opts) of
         {true, _} -> throw({invalid_token, {missing, C}});
-        false     -> undefined
+        false -> undefined
     end;
 check_expiration(C, V, _) ->
     throw({invalid_token, {badarg, {C, V}}}).
@@ -337,27 +336,22 @@ get_check_expiry(Opts) ->
     end.
 
 -spec get_subject_id(t()) -> binary().
-
 get_subject_id({_Id, SubjectID, _Claims}) ->
     SubjectID.
 
 -spec get_claims(t()) -> claims().
-
 get_claims({_Id, _Subject, Claims}) ->
     Claims.
 
 -spec get_claim(binary(), t()) -> term().
-
 get_claim(ClaimName, {_Id, _Subject, Claims}) ->
     maps:get(ClaimName, Claims).
 
 -spec get_claim(binary(), t(), term()) -> term().
-
 get_claim(ClaimName, {_Id, _Subject, Claims}, Default) ->
     maps:get(ClaimName, Claims, Default).
 
 -spec create_claims(claims(), expiration(), domains()) -> claims().
-
 create_claims(Claims, Expiration, DomainRoles) ->
     Claims#{
         <<"exp">> => Expiration,
@@ -394,7 +388,7 @@ decode_roles(Claims, VerificationOpts) ->
 insert_key(Keyname, KeyInfo = #{kid := KID}) ->
     insert_values(#{
         {keyname, Keyname} => KeyInfo,
-        {kid, KID}         => KeyInfo
+        {kid, KID} => KeyInfo
     }).
 
 get_key_by_name(Keyname) ->
@@ -404,7 +398,8 @@ get_key_by_kid(KID) ->
     lookup_value({kid, KID}).
 
 base64url_to_map(Base64) when is_binary(Base64) ->
-    jsx:decode(base64url:decode(Base64), [return_maps]).
+    {ok, Json} = jose_base64url:decode(Base64),
+    jsx:decode(Json, [return_maps]).
 
 %%
 

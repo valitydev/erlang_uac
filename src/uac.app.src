@@ -9,7 +9,6 @@
         public_key,
         genlib,
         jose,
-        base64url,
         jsx
     ]},
     {env, []},

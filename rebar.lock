@@ -1,14 +1,15 @@
-{"1.1.0",
-[{<<"base64url">>,{pkg,<<"base64url">>,<<"0.0.1">>},0},
- {<<"genlib">>,
+{"1.2.0",
+[{<<"genlib">>,
   {git,"https://github.com/rbkmoney/genlib.git",
-       {ref,"41920d7774d119c294f3aaba4043ced12da2a815"}},
+       {ref,"4565a8d73f34a0b78cca32c9cd2b97d298bdadf8"}},
   0},
- {<<"jose">>,{pkg,<<"jose">>,<<"1.7.9">>},0},
- {<<"jsx">>,{pkg,<<"jsx">>,<<"2.8.2">>},0}]}.
+ {<<"jose">>,{pkg,<<"jose">>,<<"1.11.1">>},0},
+ {<<"jsx">>,{pkg,<<"jsx">>,<<"3.0.0">>},0}]}.
 [
 {pkg_hash,[
- {<<"base64url">>, <<"36A90125F5948E3AFD7BE97662A1504B934DD5DAC78451CA6E9ABF85A10286BE">>},
- {<<"jose">>, <<"9DC5A14AB62DB4E41677FCC97993752562FB57AD0B8BA062589682EDD3ACB91F">>},
- {<<"jsx">>, <<"7ACC7D785B5ABE8A6E9ADBDE926A24E481F29956DD8B4DF49E3E4E7BCC92A018">>}]}
+ {<<"jose">>, <<"59DA64010C69AAD6CDE2F5B9248B896B84472E99BD18F246085B7B9FE435DCDB">>},
+ {<<"jsx">>, <<"20A170ABD4335FC6DB24D5FAD1E5D677C55DADF83D1B20A8A33B5FE159892A39">>}]},
+{pkg_hash_ext,[
+ {<<"jose">>, <<"078F6C9FB3CD2F4CFAFC972C814261A7D1E8D2B3685C0A76EB87E158EFFF1AC5">>},
+ {<<"jsx">>, <<"37BECA0435F5CA8A2F45F76A46211E76418FBEF80C36F0361C249FC75059DC6D">>}]}
 ].

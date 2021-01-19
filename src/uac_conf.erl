@@ -19,24 +19,23 @@
     domain_name := domain_name(),
     resource_hierarchy := resource_hierarchy()
 }.
+
 -export_type([options/0]).
 -export_type([operation_access_scopes/0]).
 
 %%
 
--spec get_child_spec() ->
-    [supervisor:child_spec()].
-
+-spec get_child_spec() -> [supervisor:child_spec()].
 get_child_spec() ->
-    [#{
-        id => ?MODULE,
-        start => {supervisor, start_link, [?MODULE, []]},
-        type => supervisor
-    }].
+    [
+        #{
+            id => ?MODULE,
+            start => {supervisor, start_link, [?MODULE, []]},
+            type => supervisor
+        }
+    ].
 
--spec init([]) ->
-    {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
-
+-spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
     ok = create_table(),
     {ok, {#{}, []}}.
@@ -45,20 +44,17 @@ init([]) ->
 %% API
 %%
 
--spec get_domain_name() ->
-    domain_name().
+-spec get_domain_name() -> domain_name().
 get_domain_name() ->
     lookup_value(domain_name).
 
--spec get_resource_hierarchy() ->
-    resource_hierarchy().
+-spec get_resource_hierarchy() -> resource_hierarchy().
 get_resource_hierarchy() ->
     lookup_value(resource_hierarchy).
 
 %%
 
--spec configure(options()) ->
-    ok.
+-spec configure(options()) -> ok.
 configure(Config) ->
     ok = insert_values(Config).
 

@@ -8,12 +8,13 @@ TEMPLATES_PATH := .
 # Name of the service
 SERVICE_NAME := erlang_uac
 
-BUILD_IMAGE_TAG := e7eb72b7721443d88a948546da815528a96c6de9
+BUILD_IMAGE_NAME := build-erlang
+BUILD_IMAGE_TAG := 1333d0926b203e00c47e4fad7e10d2252a020305
 
 CALL_ANYWHERE := \
 	submodules \
 	all compile xref lint dialyze test cover \
-	start clean distclean
+	start clean distclean check_format format
 
 CALL_W_CONTAINER := $(CALL_ANYWHERE)
 
@@ -36,10 +37,16 @@ xref:
 	$(REBAR) xref
 
 lint:
-	elvis rock
+	elvis rock -V
+
+check_format:
+	$(REBAR) fmt -c
+
+format:
+	$(REBAR) fmt -w
 
 dialyze:
-	$(REBAR) dialyzer
+	$(REBAR) as test dialyzer
 
 start: submodules
 	$(REBAR) run

@@ -21,20 +21,19 @@
     match_scope_test/1
 ]).
 
--spec illegal_input_test(config())   -> _.
--spec unrecognized_resource_test(config())   -> _.
--spec empty_test(config())           -> _.
+-spec illegal_input_test(config()) -> _.
+-spec unrecognized_resource_test(config()) -> _.
+-spec empty_test(config()) -> _.
 -spec stable_encoding_test(config()) -> _.
--spec remove_scopes_test(config())   -> _.
--spec redundancy_test(config())      -> _.
--spec match_scope_test(config())     -> _.
+-spec remove_scopes_test(config()) -> _.
+-spec redundancy_test(config()) -> _.
+-spec match_scope_test(config()) -> _.
 
--type test_case_name()  :: atom().
--type config()          :: [{atom(), any()}].
--type group_name()      :: atom().
+-type test_case_name() :: atom().
+-type config() :: [{atom(), any()}].
+-type group_name() :: atom().
 
--spec all() ->
-    [test_case_name()].
+-spec all() -> [test_case_name()].
 all() ->
     [
         illegal_input_test,
@@ -46,8 +45,7 @@ all() ->
         match_scope_test
     ].
 
--spec init_per_suite(config()) ->
-    config().
+-spec init_per_suite(config()) -> config().
 init_per_suite(Config) ->
     Apps = genlib_app:start_application(uac),
     uac:configure(#{
@@ -59,43 +57,39 @@ init_per_suite(Config) ->
         access => #{
             domain_name => <<"test">>,
             resource_hierarchy => #{
-                party               => #{invoice_templates => #{invoice_template_invoices => #{}}},
-                customers           => #{bindings => #{}},
-                invoices            => #{payments => #{}},
+                party => #{invoice_templates => #{invoice_template_invoices => #{}}},
+                customers => #{bindings => #{}},
+                invoices => #{payments => #{}},
                 payment_resources => #{}
             }
         }
     }),
     [{apps, Apps}] ++ Config.
 
--spec init_per_group(group_name(), config()) ->
-    config().
+-spec init_per_group(group_name(), config()) -> config().
 init_per_group(_Name, Config) ->
     Config.
 
--spec init_per_testcase(group_name(), config()) ->
-    config().
+-spec init_per_testcase(group_name(), config()) -> config().
 init_per_testcase(_Name, Config) ->
     Config.
 
--spec end_per_suite(config()) ->
-    config().
+-spec end_per_suite(config()) -> config().
 end_per_suite(Config) ->
     Config.
 
--spec end_per_group(group_name(), config()) ->
-    config().
+-spec end_per_group(group_name(), config()) -> config().
 end_per_group(_Name, Config) ->
     Config.
 
--spec end_per_testcase(test_case_name(), config()) ->
-    config().
+-spec end_per_testcase(test_case_name(), config()) -> config().
 end_per_testcase(_Name, Config) ->
     Config.
 
+-dialyzer({[no_fail_call], illegal_input_test/1}).
 
 illegal_input_test(_C) ->
-    ?assertError({badarg, {scope     , _}}, from_list([{[], read}])),
+    ?assertError({badarg, {scope, _}}, from_list([{[], read}])),
     ?assertError({badarg, {permission, _}}, from_list([{[invoices], wread}])).
 
 unrecognized_resource_test(_C) ->
@@ -143,14 +137,22 @@ remove_scopes_test(_C) ->
     ),
     ?assertEqual(
         new(),
-        remove([party], read,
-            remove([party], write,
-                remove([party], read,
+        remove(
+            [party],
+            read,
+            remove(
+                [party],
+                write,
+                remove(
+                    [party],
+                    read,
                     from_list([{[party], read}, {[party], write}])
                 )
             )
         )
     ).
+
+-dialyzer({[no_fail_call], match_scope_test/1}).
 
 match_scope_test(_C) ->
     ACL = from_list([
@@ -161,13 +163,13 @@ match_scope_test(_C) ->
         {[{invoices, <<"42">>}], write},
         {[{invoices, <<"42">>}, payments], read}
     ]),
-    ?assertError({badarg, _}   , match([], ACL)),
-    ?assertEqual([write]       , match([{invoices, <<"42">>}], ACL)),
-    ?assertEqual([read]        , match([{invoices, <<"43">>}], ACL)),
-    ?assertEqual([read]        , match([{invoices, <<"42">>}, {payments, <<"1">>}], ACL)),
-    ?assertEqual([write]       , match([{invoices, <<"43">>}, {payments, <<"1">>}], ACL)),
-    ?assertEqual([read, write] , match([{party, <<"BLARGH">>}], ACL)),
-    ?assertEqual([]            , match([payment_resources], ACL)).
+    ?assertError({badarg, _}, match([], ACL)),
+    ?assertEqual([write], match([{invoices, <<"42">>}], ACL)),
+    ?assertEqual([read], match([{invoices, <<"43">>}], ACL)),
+    ?assertEqual([read], match([{invoices, <<"42">>}, {payments, <<"1">>}], ACL)),
+    ?assertEqual([write], match([{invoices, <<"43">>}, {payments, <<"1">>}], ACL)),
+    ?assertEqual([read, write], match([{party, <<"BLARGH">>}], ACL)),
+    ?assertEqual([], match([payment_resources], ACL)).
 
 new() ->
     uac_acl:new().
