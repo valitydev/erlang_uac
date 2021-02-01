@@ -13,6 +13,11 @@
 
 %%
 
+-export([get_token_id/1]).
+-export([get_subject_email/1]).
+-export([set_subject_email/2]).
+-export([get_expires_at/1]).
+
 -export([get_subject_id/1]).
 -export([get_claims/1]).
 -export([get_claim/2]).
@@ -28,9 +33,11 @@
 -type kid() :: binary().
 -type key() :: #jose_jwk{}.
 -type token() :: binary().
--type claims() :: #{binary() => domains() | expiration() | term()}.
+-type claim() :: domains() | expiration() | term().
+-type claims() :: #{binary() => claim()}.
 -type subject_id() :: binary().
--type t() :: {id(), subject_id(), claims()}.
+-type t(T) :: {id(), subject_id(), claims(), metadata(T)}.
+-type t() :: t(any()).
 -type domain_name() :: binary().
 -type domains() :: #{domain_name() => uac_acl:t()}.
 -type expiration() ::
@@ -40,12 +47,23 @@
 
 -type id() :: binary().
 
+-type metadata(T) :: T.
+-type metadata() :: any().
+
 -export_type([t/0]).
+-export_type([t/1]).
 -export_type([claims/0]).
 -export_type([token/0]).
 -export_type([expiration/0]).
 -export_type([domain_name/0]).
 -export_type([domains/0]).
+-export_type([metadata/1]).
+
+-define(CLAIM_TOKEN_ID, <<"jti">>).
+-define(CLAIM_SUBJECT_ID, <<"sub">>).
+-define(CLAIM_SUBJECT_EMAIL, <<"email">>).
+-define(CLAIM_EXPIRES_AT, <<"exp">>).
+-define(CLAIM_ACCESS, <<"resource_access">>).
 
 %%
 
@@ -58,7 +76,12 @@
 -export_type([options/0]).
 
 -type keyset() :: #{
-    keyname() => keysource()
+    keyname() => key_opts()
+}.
+
+-type key_opts() :: #{
+    source := keysource(),
+    metadata => metadata()
 }.
 
 -type keysource() ::
@@ -91,8 +114,10 @@ parse_options(Options) ->
     Keyset = maps:get(keyset, Options, #{}),
     _ = is_map(Keyset) orelse exit({invalid_option, keyset, Keyset}),
     _ = genlib_map:foreach(
-        fun(K, V) ->
-            is_keysource(V) orelse exit({invalid_option, K, V})
+        fun(KeyName, #{source := Source}) ->
+            _ =
+                is_keysource(Source) orelse
+                    exit({invalid_source, KeyName, Source})
         end,
         Keyset
     ),
@@ -103,8 +128,10 @@ is_keysource({pem_file, Fn}) ->
 is_keysource(_) ->
     false.
 
-ensure_store_key(Keyname, Source) ->
-    case store_key(Keyname, Source) of
+ensure_store_key(Keyname, KeyOpts) ->
+    Source = maps:get(source, KeyOpts),
+    Metadata = maps:get(metadata, KeyOpts, #{}),
+    case store_key(Keyname, Source, Metadata) of
         ok ->
             ok;
         {error, Reason} ->
@@ -113,9 +140,9 @@ ensure_store_key(Keyname, Source) ->
 
 %%
 
--spec store_key(keyname(), {pem_file, file:filename()}) -> ok | {error, file:posix() | {unknown_key, _}}.
-store_key(Keyname, {pem_file, Filename}) ->
-    store_key(Keyname, {pem_file, Filename}, #{
+-spec store_key(keyname(), {pem_file, file:filename()}, metadata()) -> ok | {error, file:posix() | {unknown_key, _}}.
+store_key(Keyname, {pem_file, Filename}, Metadata) ->
+    store_key(Keyname, {pem_file, Filename}, Metadata, #{
         kid => fun derive_kid_from_public_key_pem_entry/1
     }).
 
@@ -129,12 +156,13 @@ derive_kid_from_public_key_pem_entry(JWK) ->
     kid => fun((key()) -> kid())
 }.
 
--spec store_key(keyname(), {pem_file, file:filename()}, store_opts()) -> ok | {error, file:posix() | {unknown_key, _}}.
-store_key(Keyname, {pem_file, Filename}, Opts) ->
+-spec store_key(keyname(), {pem_file, file:filename()}, metadata(), store_opts()) ->
+    ok | {error, file:posix() | {unknown_key, _}}.
+store_key(Keyname, {pem_file, Filename}, Metadata, Opts) ->
     case jose_jwk:from_pem_file(Filename) of
         JWK = #jose_jwk{} ->
             Key = construct_key(derive_kid(JWK, Opts), JWK),
-            ok = insert_key(Keyname, Key);
+            ok = insert_key(Keyname, Key#{metadata => Metadata});
         Error = {error, _} ->
             Error
     end.
@@ -190,22 +218,22 @@ try_get_key_for_sign(Keyname) ->
     end.
 
 construct_final_claims(SubjectID, Claims, JTI) ->
-    Token0 = #{<<"jti">> => JTI, <<"sub">> => SubjectID},
+    Token0 = #{?CLAIM_TOKEN_ID => JTI, ?CLAIM_SUBJECT_ID => SubjectID},
     EncodedClaims = maps:map(fun encode_claim/2, Claims),
     maps:merge(EncodedClaims, Token0).
 
-encode_claim(<<"exp">>, Expiration) ->
-    get_expires_at(Expiration);
-encode_claim(<<"resource_access">>, DomainRoles) ->
+encode_claim(?CLAIM_EXPIRES_AT, Expiration) ->
+    mk_expires_at(Expiration);
+encode_claim(?CLAIM_ACCESS, DomainRoles) ->
     encode_roles(DomainRoles);
 encode_claim(_, Value) ->
     Value.
 
-get_expires_at({lifetime, Lt}) ->
+mk_expires_at({lifetime, Lt}) ->
     genlib_time:unow() + Lt;
-get_expires_at({deadline, Dl}) ->
+mk_expires_at({deadline, Dl}) ->
     Dl;
-get_expires_at(unlimited) ->
+mk_expires_at(unlimited) ->
     0.
 
 sign(#{kid := KID, jwk := JWK, signer := #{} = JWS}, Claims) ->
@@ -250,18 +278,18 @@ verify(Token, VerificationOpts) ->
 
 verify(KID, Alg, ExpandedToken, VerificationOpts) ->
     case get_key_by_kid(KID) of
-        #{jwk := JWK, verifier := Algs} ->
+        #{jwk := JWK, verifier := Algs, metadata := Metadata} ->
             _ = lists:member(Alg, Algs) orelse throw({invalid_operation, Alg}),
-            verify(JWK, ExpandedToken, VerificationOpts);
+            verify_with_key(JWK, ExpandedToken, VerificationOpts, Metadata);
         undefined ->
             {error, {nonexistent_key, KID}}
     end.
 
-verify(JWK, ExpandedToken, VerificationOpts) ->
+verify_with_key(JWK, ExpandedToken, VerificationOpts, Metadata) ->
     case jose_jwt:verify(JWK, ExpandedToken) of
         {true, #jose_jwt{fields = Claims}, _JWS} ->
             {KeyMeta, Claims1} = validate_claims(Claims, VerificationOpts),
-            get_result(KeyMeta, Claims1, VerificationOpts);
+            get_result(KeyMeta, Claims1, VerificationOpts, Metadata);
         {false, _JWT, _JWS} ->
             {error, invalid_signature}
     end.
@@ -275,10 +303,10 @@ validate_claims(Claims, [{Name, Claim, Validator} | Rest], VerificationOpts, Acc
 validate_claims(Claims, [], _, Acc) ->
     {Acc, Claims}.
 
-get_result(KeyMeta, Claims, VerificationOpts) ->
+get_result(KeyMeta, Claims, VerificationOpts, Metadata) ->
     #{token_id := TokenID, subject_id := SubjectID} = KeyMeta,
     try
-        {ok, {TokenID, SubjectID, decode_roles(Claims, VerificationOpts)}}
+        {ok, {TokenID, SubjectID, decode_roles(Claims, VerificationOpts), Metadata}}
     catch
         error:{badarg, _} = Reason ->
             throw({invalid_token, {malformed_acl, Reason}})
@@ -298,9 +326,9 @@ get_alg(#{}) ->
 
 get_validators() ->
     [
-        {token_id, <<"jti">>, fun check_presence/3},
-        {subject_id, <<"sub">>, fun check_presence/3},
-        {expires_at, <<"exp">>, fun check_expiration/3}
+        {token_id, ?CLAIM_TOKEN_ID, fun check_presence/3},
+        {subject_id, ?CLAIM_SUBJECT_ID, fun check_presence/3},
+        {expires_at, ?CLAIM_EXPIRES_AT, fun check_expiration/3}
     ].
 
 check_presence(_, V, _) when is_binary(V) ->
@@ -336,27 +364,47 @@ get_check_expiry(Opts) ->
     end.
 
 -spec get_subject_id(t()) -> binary().
-get_subject_id({_Id, SubjectID, _Claims}) ->
+get_subject_id({_Id, SubjectID, _Claims, _Metadata}) ->
     SubjectID.
 
+-spec get_token_id(t()) -> binary().
+get_token_id({Id, _SubjectID, _Claims, _Metadata}) ->
+    Id.
+
 -spec get_claims(t()) -> claims().
-get_claims({_Id, _Subject, Claims}) ->
+get_claims({_Id, _Subject, Claims, _Metadata}) ->
     Claims.
 
 -spec get_claim(binary(), t()) -> term().
-get_claim(ClaimName, {_Id, _Subject, Claims}) ->
+get_claim(ClaimName, {_Id, _Subject, Claims, _Metadata}) ->
     maps:get(ClaimName, Claims).
 
 -spec get_claim(binary(), t(), term()) -> term().
-get_claim(ClaimName, {_Id, _Subject, Claims}, Default) ->
+get_claim(ClaimName, {_Id, _Subject, Claims, _Metadata}, Default) ->
     maps:get(ClaimName, Claims, Default).
 
 -spec create_claims(claims(), expiration(), domains()) -> claims().
 create_claims(Claims, Expiration, DomainRoles) ->
     Claims#{
-        <<"exp">> => Expiration,
-        <<"resource_access">> => DomainRoles
+        ?CLAIM_EXPIRES_AT => Expiration,
+        ?CLAIM_ACCESS => DomainRoles
     }.
+
+-spec get_expires_at(t()) -> expiration().
+get_expires_at({_Id, _Subject, Claims, _Metadata}) ->
+    case maps:get(?CLAIM_EXPIRES_AT, Claims) of
+        0 -> unlimited;
+        V -> V
+    end.
+
+-spec get_subject_email(t()) -> binary() | undefined.
+get_subject_email(T) ->
+    get_claim(?CLAIM_SUBJECT_EMAIL, T, undefined).
+
+-spec set_subject_email(binary(), claims()) -> claims().
+set_subject_email(SubjectID, Claims) ->
+    false = maps:is_key(?CLAIM_SUBJECT_EMAIL, Claims),
+    Claims#{?CLAIM_SUBJECT_EMAIL => SubjectID}.
 
 %%
 
@@ -367,7 +415,7 @@ encode_roles(_) ->
     #{}.
 
 decode_roles(Claims, VerificationOpts) ->
-    case genlib_map:get(<<"resource_access">>, Claims) of
+    case genlib_map:get(?CLAIM_ACCESS, Claims) of
         undefined ->
             Claims;
         ResourceAcceess when is_map(ResourceAcceess) ->
@@ -378,7 +426,7 @@ decode_roles(Claims, VerificationOpts) ->
                 fun(_, #{<<"roles">> := Roles}) -> uac_acl:decode(Roles) end,
                 maps:with(Domains, ResourceAcceess)
             ),
-            Claims#{<<"resource_access">> => DomainRoles};
+            Claims#{?CLAIM_ACCESS => DomainRoles};
         _ ->
             throw({invalid_token, {invalid, acl}})
     end.

@@ -51,7 +51,13 @@ init_per_suite(Config) ->
     uac:configure(#{
         jwt => #{
             keyset => #{
-                test => {pem_file, get_keysource("keys/local/private.pem", Config)}
+                test => #{
+                    source => {pem_file, get_keysource("keys/local/private.pem", Config)},
+                    metadata => #{
+                        auth_method => user_session_token,
+                        user_realm => <<"external">>
+                    }
+                }
             }
         },
         access => #{
