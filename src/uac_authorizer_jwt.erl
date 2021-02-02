@@ -17,6 +17,7 @@
 -export([get_subject_email/1]).
 -export([set_subject_email/2]).
 -export([get_expires_at/1]).
+-export([get_acl/1]).
 -export([get_acl/2]).
 
 -export([get_subject_id/1]).
@@ -408,6 +409,10 @@ get_subject_email(T) ->
 set_subject_email(SubjectID, Claims) ->
     false = maps:is_key(?CLAIM_SUBJECT_EMAIL, Claims),
     Claims#{?CLAIM_SUBJECT_EMAIL => SubjectID}.
+
+-spec get_acl(t()) -> {ok, uac_acl:t()} | {error, missing | {invalid, _Reason}}.
+get_acl(Context) ->
+    get_acl(uac_conf:get_domain_name(), Context).
 
 -spec get_acl(domain_name(), t()) -> {ok, uac_acl:t()} | {error, missing | {invalid, _Reason}}.
 get_acl(Domain, {_Id, _Subject, Claims, _Metadata}) ->
