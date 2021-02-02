@@ -132,13 +132,13 @@ no_token_test(_) ->
 
 -spec force_expiration_test(config()) -> _.
 force_expiration_test(_) ->
-    {ok, Token} = issue_token(?TEST_SERVICE_ACL(write), {deadline, 1}),
+    {ok, Token} = issue_token(?TEST_SERVICE_ACL(write), 1),
     {ok, AccessContext} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, #{}),
     ok = uac:authorize_operation(?TEST_SERVICE_ACL(write), AccessContext).
 
 -spec force_expiration_fail_test(config()) -> _.
 force_expiration_fail_test(_) ->
-    {ok, Token} = issue_token(?TEST_SERVICE_ACL(write), {deadline, 1}),
+    {ok, Token} = issue_token(?TEST_SERVICE_ACL(write), 1),
     {error, _} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, ?EXPIRE_AS_OF_NOW).
 
 -spec bad_signee_test(config()) -> _.
