@@ -17,6 +17,7 @@
 -export([get_subject_email/1]).
 -export([set_subject_email/2]).
 -export([get_expires_at/1]).
+-export([get_acl/2]).
 
 -export([get_subject_id/1]).
 -export([get_claims/1]).
@@ -288,7 +289,7 @@ verify_with_key(JWK, ExpandedToken, VerificationOpts, Metadata) ->
     case jose_jwt:verify(JWK, ExpandedToken) of
         {true, #jose_jwt{fields = Claims}, _JWS} ->
             _ = validate_claims(Claims, VerificationOpts),
-            get_result(Claims, VerificationOpts, Metadata);
+            get_result(Claims, Metadata);
         {false, _JWT, _JWS} ->
             {error, invalid_signature}
     end.
@@ -302,13 +303,13 @@ validate_claims(Claims, [{Name, Claim, Validator} | Rest], VerificationOpts) ->
 validate_claims(Claims, [], _) ->
     Claims.
 
-get_result(Claims, VerificationOpts, Metadata) ->
+get_result(Claims, Metadata) ->
     try
         #{
             ?CLAIM_TOKEN_ID := TokenID,
             ?CLAIM_SUBJECT_ID := SubjectID
         } = Claims,
-        {ok, {TokenID, SubjectID, decode_roles(Claims, VerificationOpts), Metadata}}
+        {ok, {TokenID, SubjectID, Claims, Metadata}}
     catch
         error:{badarg, _} = Reason ->
             throw({invalid_token, {malformed_acl, Reason}})
@@ -408,6 +409,19 @@ set_subject_email(SubjectID, Claims) ->
     false = maps:is_key(?CLAIM_SUBJECT_EMAIL, Claims),
     Claims#{?CLAIM_SUBJECT_EMAIL => SubjectID}.
 
+-spec get_acl(domain_name(), t()) -> {ok, uac_acl:t()} | {error, missing | {invalid, _Reason}}.
+get_acl(Domain, {_Id, _Subject, Claims, _Metadata}) ->
+    case genlib_map:get(?CLAIM_ACCESS, Claims) of
+        #{Domain := #{<<"roles">> := Roles}} ->
+            try
+                {ok, uac_acl:decode(Roles)}
+            catch
+                error:Reason -> {error, {invalid, Reason}}
+            end;
+        _ ->
+            {error, missing}
+    end.
+
 %%
 
 encode_roles(DomainRoles) when is_map(DomainRoles) andalso map_size(DomainRoles) > 0 ->
@@ -415,23 +429,6 @@ encode_roles(DomainRoles) when is_map(DomainRoles) andalso map_size(DomainRoles)
     maps:map(F, DomainRoles);
 encode_roles(_) ->
     #{}.
-
-decode_roles(Claims, VerificationOpts) ->
-    case genlib_map:get(?CLAIM_ACCESS, Claims) of
-        undefined ->
-            Claims;
-        ResourceAcceess when is_map(ResourceAcceess) ->
-            % @FIXME This is a temporary solution
-            % rework interface the way this line won't be needed
-            Domains = maps:get(domains_to_decode, VerificationOpts, maps:keys(ResourceAcceess)),
-            DomainRoles = maps:map(
-                fun(_, #{<<"roles">> := Roles}) -> uac_acl:decode(Roles) end,
-                maps:with(Domains, ResourceAcceess)
-            ),
-            Claims#{?CLAIM_ACCESS => DomainRoles};
-        _ ->
-            throw({invalid_token, {invalid, acl}})
-    end.
 
 %%
 

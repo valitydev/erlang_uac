@@ -15,7 +15,6 @@
 %%API
 
 -export([configure/1]).
--export([get_acl/1]).
 -export([authorize_api_key/2]).
 -export([authorize_operation/2]).
 -export([authorize_operation/3]).
@@ -32,8 +31,7 @@
 -type configuration() :: configuration(any()).
 
 -type verification_opts() :: #{
-    check_expired_as_of => genlib_time:ts(),
-    domains_to_decode => [domain_name()]
+    check_expired_as_of => genlib_time:ts()
 }.
 
 -type api_key() :: binary().
@@ -83,14 +81,20 @@ authorize_api_key(bearer, Token, VerificationOpts) ->
 
 %%
 
--spec authorize_operation(uac_conf:operation_access_scopes(), context()) -> ok | {error, unauthorized}.
+-spec authorize_operation(uac_conf:operation_access_scopes(), context()) ->
+    ok | {error, unauthorized} | {error, {acl, _Reason}}.
 authorize_operation(AccessScope, Context) ->
     authorize_operation(AccessScope, Context, uac_conf:get_domain_name()).
 
--spec authorize_operation(uac_conf:operation_access_scopes(), context(), domain_name()) -> ok | {error, unauthorized}.
-authorize_operation(AccessScope, {_, _, Claims, _}, Domain) ->
-    ACL = get_acl(Claims, Domain),
-    authorize_operation_(AccessScope, ACL).
+-spec authorize_operation(uac_conf:operation_access_scopes(), context(), domain_name()) ->
+    ok | {error, unauthorized} | {error, {acl, _Reason}}.
+authorize_operation(AccessScope, Context, Domain) ->
+    case uac_authorizer_jwt:get_acl(Domain, Context) of
+        {ok, ACL} ->
+            authorize_operation_(AccessScope, ACL);
+        {error, Reason} ->
+            {error, {acl, Reason}}
+    end.
 
 authorize_operation_(_, undefined) ->
     {error, unauthorized};
@@ -107,16 +111,6 @@ authorize_operation_(AccessScope, ACL) ->
             ok;
         false ->
             {error, unauthorized}
-    end.
-
--spec get_acl(context()) -> undefined | uac_acl:t().
-get_acl({_, _, Claims, _}) ->
-    get_acl(Claims, uac_conf:get_domain_name()).
-
-get_acl(Claims, Domain) ->
-    case genlib_map:get(<<"resource_access">>, Claims) of
-        undefined -> undefined;
-        DomainRoles when is_map(DomainRoles) -> genlib_map:get(Domain, DomainRoles)
     end.
 
 %%
