@@ -21,6 +21,7 @@
 }.
 
 -export_type([options/0]).
+-export_type([resource_hierarchy/0]).
 -export_type([operation_access_scopes/0]).
 
 %%

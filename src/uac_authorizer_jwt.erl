@@ -48,7 +48,7 @@
 -type id() :: binary().
 
 -type metadata(T) :: T.
--type metadata() :: any().
+-type metadata() :: metadata(any()).
 
 -export_type([t/0]).
 -export_type([t/1]).
@@ -57,6 +57,7 @@
 -export_type([expiration/0]).
 -export_type([domain_name/0]).
 -export_type([domains/0]).
+-export_type([metadata/0]).
 -export_type([metadata/1]).
 
 -define(CLAIM_TOKEN_ID, <<"jti">>).
@@ -67,21 +68,24 @@
 
 %%
 
--type options() :: #{
+-type options(T) :: #{
     %% The set of keys used to sign issued tokens and verify signatures on such
     %% tokens.
-    keyset => keyset()
+    keyset => keyset(T)
 }.
+
+-type options() :: options(any()).
 
 -export_type([options/0]).
+-export_type([options/1]).
 
--type keyset() :: #{
-    keyname() => key_opts()
+-type keyset(T) :: #{
+    keyname() => key_opts(T)
 }.
 
--type key_opts() :: #{
+-type key_opts(T) :: #{
     source := keysource(),
-    metadata => metadata()
+    metadata => metadata(T)
 }.
 
 -type keysource() ::

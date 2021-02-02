@@ -15,17 +15,21 @@
 %%API
 
 -export([configure/1]).
+-export([get_acl/1]).
 -export([authorize_api_key/2]).
 -export([authorize_operation/2]).
 -export([authorize_operation/3]).
 
 -type context() :: uac_authorizer_jwt:t().
+-type context(T) :: uac_authorizer_jwt:t(T).
 -type claims() :: uac_authorizer_jwt:claims().
 
--type configuration() :: #{
-    jwt := uac_authorizer_jwt:options(),
+-type configuration(T) :: #{
+    jwt := uac_authorizer_jwt:options(T),
     access := uac_conf:options()
 }.
+
+-type configuration() :: configuration(any()).
 
 -type verification_opts() :: #{
     check_expired_as_of => genlib_time:ts(),
@@ -37,6 +41,9 @@
 -type domain_name() :: uac_authorizer_jwt:domain_name().
 
 -export_type([context/0]).
+-export_type([context/1]).
+-export_type([configuration/0]).
+-export_type([configuration/1]).
 -export_type([claims/0]).
 -export_type([verification_opts/0]).
 
@@ -101,6 +108,10 @@ authorize_operation_(AccessScope, ACL) ->
         false ->
             {error, unauthorized}
     end.
+
+-spec get_acl(context()) -> undefined | uac_acl:t().
+get_acl({_, _, Claims, _}) ->
+    get_acl(Claims, uac_conf:get_domain_name()).
 
 get_acl(Claims, Domain) ->
     case genlib_map:get(<<"resource_access">>, Claims) of
