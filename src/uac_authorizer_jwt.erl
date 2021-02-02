@@ -287,24 +287,27 @@ verify(KID, Alg, ExpandedToken, VerificationOpts) ->
 verify_with_key(JWK, ExpandedToken, VerificationOpts, Metadata) ->
     case jose_jwt:verify(JWK, ExpandedToken) of
         {true, #jose_jwt{fields = Claims}, _JWS} ->
-            {KeyMeta, Claims1} = validate_claims(Claims, VerificationOpts),
-            get_result(KeyMeta, Claims1, VerificationOpts, Metadata);
+            _ = validate_claims(Claims, VerificationOpts),
+            get_result(Claims, VerificationOpts, Metadata);
         {false, _JWT, _JWS} ->
             {error, invalid_signature}
     end.
 
 validate_claims(Claims, VerificationOpts) ->
-    validate_claims(Claims, get_validators(), VerificationOpts, #{}).
+    validate_claims(Claims, get_validators(), VerificationOpts).
 
-validate_claims(Claims, [{Name, Claim, Validator} | Rest], VerificationOpts, Acc) ->
-    V = Validator(Name, maps:get(Claim, Claims, undefined), VerificationOpts),
-    validate_claims(maps:without([Claim], Claims), Rest, VerificationOpts, Acc#{Name => V});
-validate_claims(Claims, [], _, Acc) ->
-    {Acc, Claims}.
+validate_claims(Claims, [{Name, Claim, Validator} | Rest], VerificationOpts) ->
+    _ = Validator(Name, maps:get(Claim, Claims, undefined), VerificationOpts),
+    validate_claims(Claims, Rest, VerificationOpts);
+validate_claims(Claims, [], _) ->
+    Claims.
 
-get_result(KeyMeta, Claims, VerificationOpts, Metadata) ->
-    #{token_id := TokenID, subject_id := SubjectID} = KeyMeta,
+get_result(Claims, VerificationOpts, Metadata) ->
     try
+        #{
+            ?CLAIM_TOKEN_ID := TokenID,
+            ?CLAIM_SUBJECT_ID := SubjectID
+        } = Claims,
         {ok, {TokenID, SubjectID, decode_roles(Claims, VerificationOpts), Metadata}}
     catch
         error:{badarg, _} = Reason ->
