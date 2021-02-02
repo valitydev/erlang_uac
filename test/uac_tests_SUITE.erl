@@ -134,7 +134,8 @@ no_token_test(_) ->
 force_expiration_test(_) ->
     {ok, Token} = issue_token(?TEST_SERVICE_ACL(write), 1),
     {ok, AccessContext} = uac:authorize_api_key(<<"Bearer ", Token/binary>>, #{}),
-    ok = uac:authorize_operation(?TEST_SERVICE_ACL(write), AccessContext).
+    ok = uac:authorize_operation(?TEST_SERVICE_ACL(write), AccessContext),
+    1 = uac_authorizer_jwt:get_expires_at(AccessContext).
 
 -spec force_expiration_fail_test(config()) -> _.
 force_expiration_fail_test(_) ->
@@ -206,15 +207,15 @@ configure_processed_domains_test(_) ->
 
 %%
 
-issue_token(DomainRoles, LifeTime) when is_map(DomainRoles) ->
+issue_token(DomainRoles, Expiration) when is_map(DomainRoles) ->
     PartyID = <<"TEST">>,
     Claims0 = #{<<"TEST">> => <<"TEST">>},
-    Claims = uac_authorizer_jwt:create_claims(Claims0, LifeTime, DomainRoles),
+    Claims = uac_authorizer_jwt:create_claims(Claims0, Expiration, DomainRoles),
     uac_authorizer_jwt:issue(unique_id(), PartyID, Claims, test);
-issue_token(ACL, LifeTime) ->
+issue_token(ACL, Expiration) ->
     PartyID = <<"TEST">>,
     Claims0 = #{<<"TEST">> => <<"TEST">>},
-    Claims = uac_authorizer_jwt:create_claims(Claims0, LifeTime, #{?TEST_DOMAIN_NAME => uac_acl:from_list(ACL)}),
+    Claims = uac_authorizer_jwt:create_claims(Claims0, Expiration, #{?TEST_DOMAIN_NAME => uac_acl:from_list(ACL)}),
     uac_authorizer_jwt:issue(unique_id(), PartyID, Claims, test).
 
 issue_dummy_token(ACL, Config) ->
