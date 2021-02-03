@@ -96,8 +96,6 @@ authorize_operation(AccessScope, Context, Domain) ->
             {error, {acl, Reason}}
     end.
 
-authorize_operation_(_, undefined) ->
-    {error, unauthorized};
 authorize_operation_(AccessScope, ACL) ->
     case
         lists:all(
